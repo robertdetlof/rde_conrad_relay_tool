@@ -1,8 +1,9 @@
-from PyQt5.QtWidgets import QApplication, QLayout, QComboBox, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget,QMainWindow, QPushButton
-from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QThread
+from queue import Queue, Empty
 import serial
 import serial.tools.list_ports
-from queue import Queue, Empty
+from PyQt5.QtWidgets import QMessageBox, QErrorMessage, QApplication, QLayout, QComboBox, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget,QMainWindow, QPushButton
+from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QThread
+from relay_config import load_config
 from conrad import ConradRelayCard
 
 __author__="Robert Detlof"
@@ -74,9 +75,11 @@ class RelayWindow(QWidget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+        config = self._load_relay_config()
+
         self.relay_buttons = []
         self.meta_buttons = []
-        self.setup_relay_layout()
+        self.setup_relay_layout(config)
 
         self.selected_com_port = None
         self.relay_card = ConradRelayCard()
@@ -106,7 +109,19 @@ class RelayWindow(QWidget):
         self.current_state = [False, False, False, False, False, False, False, False]
 
         
-    def hacky_button_action(self):
+
+    def _load_relay_config(self):
+        try:
+            return load_config(allow_write=True)
+        
+        except Exception as e:
+            #error_dialog = QErrorMessage()
+            #error_dialog.showMessage('Oh no!')
+
+            _make_error_window(e, kill_process=True)
+
+        
+    def boring_old_button_action(self):
         event_cause = self.sender() # event cause
         card_id = 0
         relay_index = event_cause.relay_index
@@ -179,6 +194,10 @@ class RelayWindow(QWidget):
         for port, desc, hwid in sorted(ports):
                 port_names.append(port)
                 print("{}: {} [{}]".format(port, desc, hwid))
+                print("port:", port)
+                print("desc:", desc)
+                print("hwid:", hwid)
+                print("-" * 64)
 
         return port_names
 
@@ -195,7 +214,7 @@ class RelayWindow(QWidget):
     def _disable_relay_buttons(self):
         self._set_buttons_enabled(state=False)
 
-    def connect_relay_card(self):
+    def _connect_relay_card(self):
         self.selected_com_port = self.combobox_ports.currentText()
         
         if self.selected_com_port == None or self.selected_com_port == "":
@@ -235,7 +254,7 @@ class RelayWindow(QWidget):
         self.queue_update_relay.put( (state_b, 0) )
 
 
-    def setup_relay_layout(self):
+    def setup_relay_layout(self, config):
         vbox_layout = QVBoxLayout()
         self.setLayout(vbox_layout)
 
@@ -250,7 +269,7 @@ class RelayWindow(QWidget):
 
         #self.combobox_ports.currentTextChanged.connect(self.on_combobox_changed)
         self.connect_button = QPushButton("Connect")
-        self.connect_button.clicked.connect(self.connect_relay_card)
+        self.connect_button.clicked.connect(self._connect_relay_card)
         layout_com_selection.addWidget(self.combobox_ports)
         layout_com_selection.addWidget(self.connect_button)
 
@@ -258,12 +277,10 @@ class RelayWindow(QWidget):
 
         # meta buttons area
         widget_meta_actions = QWidget(self)
-        
         layout_meta_actions = QHBoxLayout()
         layout_meta_actions.setContentsMargins(7, 0, 7, 0)
-
         widget_meta_actions.setLayout(layout_meta_actions)
-        
+
         # button all on
         button_all_on = QPushButton("All On")
         button_all_on.clicked.connect(self.action_enable_all)
@@ -304,19 +321,26 @@ class RelayWindow(QWidget):
         grid.setContentsMargins(7, 0, 7, 7)
         widget_relay_buttons.setLayout(grid)
 
+        custom_labels = config.get("labels")
         self.relay_buttons = []
-        i = 1
+        i = 0
         for y in range(0,2):
             for x in range(0,4):
-                b = QPushButton(f"{i}")
+
+                custom_label = ""
+                if i < len(custom_labels):
+                    custom_label = f"\n{custom_labels[i]}"
+                
+                b = QPushButton(f"{i + 1}{custom_label}")
                 b.relay_state = False
-                b.relay_index = i - 1
+                b.relay_index = i
                 b.default_stylesheet = b.styleSheet()
                 b.setFixedSize(100, 100)
-                i += 1
                 grid.addWidget(b, y, x)
                 self.relay_buttons.append(b)
-                b.clicked.connect( self.hacky_button_action )
+                b.clicked.connect( self.boring_old_button_action )
+
+                i += 1
 
         vbox_layout.addWidget(widget_relay_buttons)
         self._disable_relay_buttons()
@@ -325,15 +349,30 @@ class RelayWindow(QWidget):
         vbox_layout.setSizeConstraint(QLayout.SetFixedSize)
         
 
-class MyMainWindow(QMainWindow):
+class RelayMainWindow(QMainWindow):
     def __init__(self, parent=None):
-        super(MyMainWindow, self).__init__(parent)
+        super(RelayMainWindow, self).__init__(parent)
         self.form_widget = RelayWindow() 
         self.setCentralWidget(self.form_widget)
-        self.setWindowTitle("Main Window")
 
-app = QApplication([])
-main_window = MyMainWindow()
-main_window.setWindowTitle("RDE Relay Tool v0.1")
-main_window.show()
-app.exec()
+def _make_error_window(e, kill_process=False):
+    msg = QMessageBox()
+    msg.setIcon(QMessageBox.Critical)
+    msg.setText(f"Error while parsing Relay Config:\n{type(e).__name__}")
+    msg.setInformativeText(str(e))
+    msg.setWindowTitle("Config Parsing Error")
+    msg.exec_()
+
+    if kill_process:
+        import sys
+        sys.exit(1)
+
+
+def main():
+    app = QApplication([])
+    main_window = RelayMainWindow()
+    main_window.setWindowTitle("RDE Relay Tool v0.1")
+    main_window.show()
+    app.exec()
+
+main()
