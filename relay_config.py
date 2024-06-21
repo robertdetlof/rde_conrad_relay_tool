@@ -65,10 +65,40 @@ DEFAULT_CONFIG = {
 }
 """
 
+
+DEFAULT_CONFIG = {
+    "labels" : [],
+    "buttons": [
+        {
+            "action": "activate",
+            "label": "All On",
+            "targets" : [1, 2, 3, 4, 5, 6, 7, 8]
+        },
+        {
+            "action": "deactivate",
+            "label": "All Off",
+            "targets" : [1, 2, 3, 4, 5, 6, 7, 8]
+        },
+        {
+            "action": "activate",
+            "label": "1-5 On",
+            "targets" : [1, 2, 3, 4, 5]
+        },
+        {
+            "action": "pulse",
+            "label": "Pulse 6,7,8",
+            "targets" : [6, 7, 8],
+            "duration": 500
+        }
+    ]
+}
+
+"""
 DEFAULT_CONFIG = {
     "labels" : [],
     "buttons": []
 }
+"""
 
 CONFIG_NAME = "relay_config.json"
 

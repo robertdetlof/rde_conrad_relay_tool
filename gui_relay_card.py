@@ -7,6 +7,7 @@ from relay_config import load_config
 from conrad import ConradRelayCard
 
 __author__="Robert Detlof"
+__title__="RDE Relay Tool v0.3"
 
 class GuiUpdateWorker(QObject):
     state_change = pyqtSignal(list)
@@ -120,6 +121,39 @@ class RelayWindow(QWidget):
 
             _make_error_window(e, kill_process=True)
 
+
+    def _factorize_special_buttons(self, config, parent_widget, logical_container=[]):
+        config_buttons = config.get("buttons")
+        for b in config_buttons:
+            print(b)
+            button_temp = QPushButton(b.get("label"))
+            button_temp.custom_action = b.get("action")
+            button_temp.custom_targets = b.get("targets")
+            button_temp.custom_duration = b.get("duration")
+            button_temp.clicked.connect(self.special_action)
+            parent_widget.addWidget(button_temp)
+            logical_container.append(button_temp)
+
+
+    def special_action(self):
+        event_cause = self.sender() # event cause
+        custom_action = event_cause.custom_action
+
+        print("#####")
+        print(event_cause.text())
+        print(event_cause.custom_action)
+        print(event_cause.custom_targets)
+        print(event_cause.custom_duration)
+
+        if custom_action == "activate":
+            self.action_activate_selective(event_cause.custom_targets)
+        elif custom_action == "deactivate":
+            self.action_disable_selective(event_cause.custom_targets)
+        elif custom_action == "pulse":
+            self.action_pulse_selective(event_cause.custom_targets, duration=event_cause.custom_duration)
+        else:
+            print("Unknown special button action. Cannot perform")
+
         
     def boring_old_button_action(self):
         event_cause = self.sender() # event cause
@@ -160,7 +194,6 @@ class RelayWindow(QWidget):
                 """)
         
     def _display_button_limbo(self, btn):
-        print("Limbo called")
         btn.setStyleSheet("""
                 QPushButton {
                     background-color: orange; 
@@ -174,7 +207,7 @@ class RelayWindow(QWidget):
     def _display_button_disabled(self, btn):
         btn.setStyleSheet(btn.default_stylesheet)
 
-
+    """
     def action_enable_all(self):
         self.queue_update_relay.put( ([True, True, True, True, True, True, True, True], 0))
 
@@ -187,12 +220,69 @@ class RelayWindow(QWidget):
     def action_activate_first_five(self):
         self.queue_update_relay.put(([True, True, True, True, True, False, False, False], 0))
 
+    def action_pulse(self):
+        #relay_index = event_cause.relay_index
+        #state = self.current_state.copy()
+        state_a = self.current_state.copy()
+        state_b = state_a.copy()
+
+        state_a[5] = True
+        state_a[6] = True
+        state_a[7] = True
+        self.queue_update_relay.put( (state_a, 500) )
+
+        state_b[5] = False
+        state_b[6] = False
+        state_b[7] = False
+        self.queue_update_relay.put( (state_b, 0) )
+    """
+
+    def action_activate_selective(self, targets=[]):
+        state = self.current_state.copy()
+        targets = list(dict.fromkeys(targets))
+        
+        for t in targets:
+            if (t - 1) < len(state):
+                state[t - 1] = True
+
+        self.queue_update_relay.put((state, 0))
+
+
+    def action_disable_selective(self, targets=[]):
+        state = self.current_state.copy()
+        targets = list(dict.fromkeys(targets))
+        
+        for t in targets:
+            if (t - 1) < len(state):
+                state[t - 1] = False
+
+        self.queue_update_relay.put((state, 0))
+
+    def action_pulse_selective(self, targets=[], duration=500):
+        state_a = self.current_state.copy()
+        state_b = state_a.copy()
+
+        for t in targets:
+            if (t - 1) < len(state_a):
+                state_a[t - 1] = True
+        self.queue_update_relay.put( (state_a, duration) )
+
+        for t in targets:
+            if (t - 1) < len(state_b):
+                state_b[t - 1] = False
+        self.queue_update_relay.put( (state_b, 0) )
+
+
     def list_ports(self):
         ports = serial.tools.list_ports.comports()
         port_names = []
 
         for port, desc, hwid in sorted(ports):
-                port_names.append(port)
+                port_names.append(
+                    {'port': port, 
+                     'hwid': hwid,
+                     'desc': desc 
+                     })
                 print("{}: {} [{}]".format(port, desc, hwid))
                 print("port:", port)
                 print("desc:", desc)
@@ -215,8 +305,9 @@ class RelayWindow(QWidget):
         self._set_buttons_enabled(state=False)
 
     def _connect_relay_card(self):
-        self.selected_com_port = self.combobox_ports.currentText()
-        
+        #self.selected_com_port = self.combobox_ports.currentText()
+        self.selected_com_port = self.combobox_ports.itemData(self.combobox_ports.currentIndex())
+
         if self.selected_com_port == None or self.selected_com_port == "":
             pass
 
@@ -237,21 +328,7 @@ class RelayWindow(QWidget):
             print(e)
 
 
-    def action_pulse(self):
-        #relay_index = event_cause.relay_index
-        #state = self.current_state.copy()
-        state_a = self.current_state.copy()
-        state_b = state_a.copy()
-
-        state_a[5] = True
-        state_a[6] = True
-        state_a[7] = True
-        self.queue_update_relay.put( (state_a, 500) )
-
-        state_b[5] = False
-        state_b[6] = False
-        state_b[7] = False
-        self.queue_update_relay.put( (state_b, 0) )
+    
 
 
     def setup_relay_layout(self, config):
@@ -264,8 +341,12 @@ class RelayWindow(QWidget):
         widget_com_selection.setLayout(layout_com_selection)
         self.combobox_ports = QComboBox()
         
-        for port_name in self.list_ports():
-            self.combobox_ports.addItem(port_name)
+        for port in self.list_ports():
+            adendum = ""
+            if port.get("desc").startswith("Silicon Labs CP210x USB"):
+                adendum = "- Conrad"
+
+            self.combobox_ports.addItem(f"{port.get('port')} {adendum}", userData=port.get("port"))
 
         #self.combobox_ports.currentTextChanged.connect(self.on_combobox_changed)
         self.connect_button = QPushButton("Connect")
@@ -275,12 +356,19 @@ class RelayWindow(QWidget):
 
         vbox_layout.addWidget(widget_com_selection)
 
+
+        
+
+        
         # meta buttons area
         widget_meta_actions = QWidget(self)
         layout_meta_actions = QHBoxLayout()
         layout_meta_actions.setContentsMargins(7, 0, 7, 0)
         widget_meta_actions.setLayout(layout_meta_actions)
 
+        self._factorize_special_buttons(config=config, parent_widget=layout_meta_actions, logical_container=self.meta_buttons)
+
+        """
         # button all on
         button_all_on = QPushButton("All On")
         button_all_on.clicked.connect(self.action_enable_all)
@@ -301,18 +389,19 @@ class RelayWindow(QWidget):
 
         # button check
         """
+        """
         button_check = QPushButton("Check")
         button_check.clicked.connect(self.action_check)
         layout_meta_actions.addWidget(button_check)
         self.meta_buttons.append(button_check)
         """
-
+        """
         # button pulse 6-8
         button_pulse = QPushButton("Pulse 6,7,8")
         button_pulse.clicked.connect(self.action_pulse)
         layout_meta_actions.addWidget(button_pulse)
         self.meta_buttons.append(button_pulse)
-
+        """
         vbox_layout.addWidget(widget_meta_actions)
 
         # relay buttons
@@ -339,7 +428,6 @@ class RelayWindow(QWidget):
                 grid.addWidget(b, y, x)
                 self.relay_buttons.append(b)
                 b.clicked.connect( self.boring_old_button_action )
-
                 i += 1
 
         vbox_layout.addWidget(widget_relay_buttons)
@@ -371,8 +459,9 @@ def _make_error_window(e, kill_process=False):
 def main():
     app = QApplication([])
     main_window = RelayMainWindow()
-    main_window.setWindowTitle("RDE Relay Tool v0.1")
+    main_window.setWindowTitle(__title__)
     main_window.show()
+    main_window.setFixedSize(main_window.width(), main_window.height())
     app.exec()
 
 main()
