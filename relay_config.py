@@ -15,12 +15,14 @@ CONFIG_SCHEMA = {
     "properties": {
         "labels": {
             "type": "array",
+            "maxItems": 16,
             "items": {
                 "type": "string"
             }
         },
         "buttons": {
             "type": "array",
+            "maxItems": 32,
             "items": {
                 "type": "object",
                 "required": ["action", "label", "targets"],
@@ -31,36 +33,24 @@ CONFIG_SCHEMA = {
                     "label": {"type": "string"},
                     "targets": {
                         "type": "array",
+                        "minItems": 1,
+                        "maxItems": 128,
                         "items": {
-                            "type": "integer"
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 8
                         }
                     },
                     "duration": {
-                        "type": "integer"
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 86400000
                     }
                 }
             }
         }
     }   
 }
-
-"""
-DEFAULT_CONFIG = {
-    "labels" : [],
-    "buttons": [
-        {
-            "action": "activate",
-            "label": "All On",
-            "targets" : [1, 2, 3, 4, 5, 6, 7, 8]
-        },
-        {
-            "action": "deactivate",
-            "label": "All Off",
-            "targets" : [1, 2, 3, 4, 5, 6, 7, 8]
-        }
-    ]
-}
-"""
 
 
 DEFAULT_CONFIG = {
@@ -90,12 +80,6 @@ DEFAULT_CONFIG = {
     ]
 }
 
-"""
-DEFAULT_CONFIG = {
-    "labels" : [],
-    "buttons": []
-}
-"""
 
 CONFIG_NAME = "relay_config.json"
 

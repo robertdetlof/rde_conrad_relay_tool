@@ -51,7 +51,7 @@ Example config:
 
 Currently allowed actions for custom buttons are `activate`, `deactivate` and `pulse`. 
 
-The `pulse` action will activate the specified relays simultaneously for a given duration (default: 500 ms) and then disable the given relays again.
+The `pulse` action will activate the specified relays simultaneously for a given duration (default: 500 ms; range [1-86400000]) and then disable the given relays again.
 
 ### Changelog
 

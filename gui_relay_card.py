@@ -13,6 +13,8 @@ logging.basicConfig(level=logging.DEBUG)
 
 __author__ = "Robert Detlof"
 __title__  = "RDE Relay Tool v0.3"
+__max_special_buttons__ = 16
+__max_label_length__ = 14
 
 class GuiUpdateWorker(QObject):
     state_change = pyqtSignal(list)
@@ -123,16 +125,25 @@ class RelayWindow(QWidget):
             _make_error_window(e, kill_process=True, headline="Error Parsing Relay Config", popup_title="Relay Config Error")
 
     def _factorize_special_buttons(self, config, parent_widget, logical_container=[]):
-        config_buttons = config.get("buttons")
+        config_buttons = config.get("buttons")[:__max_special_buttons__]
+
+        x = 0
+        y = 0
+        import math
+
+
         for b in config_buttons:
             log.debug(str(b))
-            button_temp = QPushButton(b.get("label"))
+            button_temp = QPushButton(b.get("label")[:__max_label_length__])
             button_temp.custom_action = b.get("action")
             button_temp.custom_targets = b.get("targets")
             button_temp.custom_duration = b.get("duration")
             button_temp.clicked.connect(self.special_action)
-            parent_widget.addWidget(button_temp)
+            parent_widget.addWidget(button_temp, y, x % 4)
             logical_container.append(button_temp)
+
+            x = x + 1
+            y = math.floor(x / 4)
 
 
     def special_action(self):
@@ -332,24 +343,23 @@ class RelayWindow(QWidget):
 
             self.combobox_ports.addItem(f"{port.get('port')} {adendum}", userData=port.get("port"))
 
-        #self.combobox_ports.currentTextChanged.connect(self.on_combobox_changed)
+        # CONNECT BUTTON
         self.connect_button = QPushButton("Connect")
         self.connect_button.clicked.connect(self._connect_relay_card)
         layout_com_selection.addWidget(self.combobox_ports)
         layout_com_selection.addWidget(self.connect_button)
         vbox_layout.addWidget(widget_com_selection)
         
-        # meta buttons area
+        # META BUTTONS
         widget_meta_actions = QWidget(self)
-        layout_meta_actions = QHBoxLayout()
+        #layout_meta_actions = QHBoxLayout()
+        layout_meta_actions = QGridLayout()
         layout_meta_actions.setContentsMargins(7, 0, 7, 0)
         widget_meta_actions.setLayout(layout_meta_actions)
-
         self._factorize_special_buttons(config=config, parent_widget=layout_meta_actions, logical_container=self.meta_buttons)
-        
         vbox_layout.addWidget(widget_meta_actions)
 
-        # relay buttons
+        # RELAY BUTTONS
         widget_relay_buttons = QWidget()
         grid = QGridLayout()
         grid.setContentsMargins(7, 0, 7, 7)
@@ -365,7 +375,7 @@ class RelayWindow(QWidget):
                 if i < len(custom_labels):
                     custom_label = f"\n{custom_labels[i]}"
                 
-                b = QPushButton(f"{i + 1}{custom_label}")
+                b = QPushButton(f"{i + 1}{custom_label[:__max_label_length__]}")
                 b.relay_state = False
                 b.relay_index = i
                 b.default_stylesheet = b.styleSheet()
