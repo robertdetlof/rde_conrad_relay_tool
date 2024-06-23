@@ -2,12 +2,9 @@ from pathlib import Path
 import json
 from jsonschema import validate as json_validate
 import logging
+__author__ = "Robert Detlof"
 
 log = logging.getLogger("RelayConfig")
-#log.setLevel(logging.INFO)
-logging.basicConfig(level=logging.DEBUG)
-
-__author__ = "Robert Detlof"
 
 CONFIG_SCHEMA = {
     "type": "object",

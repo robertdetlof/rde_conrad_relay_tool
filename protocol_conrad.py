@@ -159,7 +159,7 @@ class ConradRelayCard:
         response_frame_raw = bytearray(last_read)
 
         if len(response_frame_raw) < 4:
-            raise Exception("Reponse truncated")
+            raise ConnectionError("Response truncated")
         
         response_frame = ConradSerialFrame(response_frame_raw[0], response_frame_raw[1], response_frame_raw[2])
         
@@ -236,7 +236,7 @@ class ConradRelayCard:
         print("self.connection.is_open", self.connection.is_open)
 
         if self.connection == None or not self.connection.is_open:
-            raise Exception("Could not open serial connection")
+            raise ConnectionError("Could not open serial connection")
 
         self.connection.reset_input_buffer()
         self.connection.reset_output_buffer()

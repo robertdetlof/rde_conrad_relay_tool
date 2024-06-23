@@ -2,12 +2,17 @@ from queue import Queue, Empty
 import serial
 import serial.tools.list_ports
 from PyQt5.QtWidgets import QMessageBox, QErrorMessage, QApplication, QLayout, QComboBox, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget,QMainWindow, QPushButton
-from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QThread
+from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QThread, QTimer
+from PyQt5 import QtGui
 from relay_config import load_config
-from conrad import ConradRelayCard
+from protocol_conrad import ConradRelayCard
+import logging
 
-__author__="Robert Detlof"
-__title__="RDE Relay Tool v0.3"
+log = logging.getLogger("GUI Relay Card")
+logging.basicConfig(level=logging.DEBUG)
+
+__author__ = "Robert Detlof"
+__title__  = "RDE Relay Tool v0.3"
 
 class GuiUpdateWorker(QObject):
     state_change = pyqtSignal(list)
@@ -27,7 +32,7 @@ class GuiUpdateWorker(QObject):
                 state_flags = self.queue_relay_state.get(timeout=1.0)
                 self.state_change.emit(state_flags)
             except Empty:
-                print("GuiUpdateWorker: No updates")
+                log.debug("GuiUpdateWorker: No updates")
 
         self.finished.emit()
 
@@ -53,20 +58,20 @@ class RelaySwitcherWorker(QObject):
             try:
                 state_flags, additional_wait_time = self.queue_relay_state.get(timeout=1.0)
                 
-                print("RelaySwitcherWorker: Requested state", state_flags)
+                log.debug(f"RelaySwitcherWorker: Requested state {state_flags}")
                 new_state_flags = self.relay_card.hacky_set_relays(card_id=0, relay_flags_bool=state_flags)
                 
                 self.queue_gui_update.put(new_state_flags)
 
-                print("additional_wait_time", additional_wait_time)
+                log.debug(f"additional_wait_time: {additional_wait_time}", )
                 QThread.msleep(additional_wait_time)
 
 
             except Empty:
-                print("RelaySwitcherWorker: No updates")
+                log.debug("RelaySwitcherWorker: No updates")
 
             except Exception as e:
-                print(e)
+                log.error(e)
 
         self.finished.emit()
 
@@ -109,23 +114,18 @@ class RelayWindow(QWidget):
         # initial state
         self.current_state = [False, False, False, False, False, False, False, False]
 
-        
 
     def _load_relay_config(self):
         try:
             return load_config(allow_write=True)
         
         except Exception as e:
-            #error_dialog = QErrorMessage()
-            #error_dialog.showMessage('Oh no!')
-
-            _make_error_window(e, kill_process=True)
-
+            _make_error_window(e, kill_process=True, headline="Error Parsing Relay Config", popup_title="Relay Config Error")
 
     def _factorize_special_buttons(self, config, parent_widget, logical_container=[]):
         config_buttons = config.get("buttons")
         for b in config_buttons:
-            print(b)
+            log.debug(str(b))
             button_temp = QPushButton(b.get("label"))
             button_temp.custom_action = b.get("action")
             button_temp.custom_targets = b.get("targets")
@@ -150,10 +150,13 @@ class RelayWindow(QWidget):
         elif custom_action == "deactivate":
             self.action_disable_selective(event_cause.custom_targets)
         elif custom_action == "pulse":
-            self.action_pulse_selective(event_cause.custom_targets, duration=event_cause.custom_duration)
-        else:
-            print("Unknown special button action. Cannot perform")
+            duration = 500
+            if event_cause.custom_duration:
+                duration = event_cause.custom_duration
 
+            self.action_pulse_selective(event_cause.custom_targets, duration=duration)
+        else:
+            _make_error_window(Exception("Unknown special button action. Cannot perform"), kill_process=False)
         
     def boring_old_button_action(self):
         event_cause = self.sender() # event cause
@@ -207,35 +210,6 @@ class RelayWindow(QWidget):
     def _display_button_disabled(self, btn):
         btn.setStyleSheet(btn.default_stylesheet)
 
-    """
-    def action_enable_all(self):
-        self.queue_update_relay.put( ([True, True, True, True, True, True, True, True], 0))
-
-    def action_disable_all(self):
-        self.queue_update_relay.put(([False, False, False, False, False, False, False, False], 0))
-
-    def action_check(self):
-        pass
-
-    def action_activate_first_five(self):
-        self.queue_update_relay.put(([True, True, True, True, True, False, False, False], 0))
-
-    def action_pulse(self):
-        #relay_index = event_cause.relay_index
-        #state = self.current_state.copy()
-        state_a = self.current_state.copy()
-        state_b = state_a.copy()
-
-        state_a[5] = True
-        state_a[6] = True
-        state_a[7] = True
-        self.queue_update_relay.put( (state_a, 500) )
-
-        state_b[5] = False
-        state_b[6] = False
-        state_b[7] = False
-        self.queue_update_relay.put( (state_b, 0) )
-    """
 
     def action_activate_selective(self, targets=[]):
         state = self.current_state.copy()
@@ -265,12 +239,15 @@ class RelayWindow(QWidget):
         for t in targets:
             if (t - 1) < len(state_a):
                 state_a[t - 1] = True
-        self.queue_update_relay.put( (state_a, duration) )
-
-        for t in targets:
-            if (t - 1) < len(state_b):
                 state_b[t - 1] = False
+
+        self.queue_update_relay.put( (state_a, duration) )
         self.queue_update_relay.put( (state_b, 0) )
+
+        self._disable_relay_buttons()
+        self.timer = QTimer()
+        self.timer.timeout.connect(self._enable_relay_buttons)
+        self.timer.start(duration + 200)
 
 
     def list_ports(self):
@@ -324,11 +301,18 @@ class RelayWindow(QWidget):
 
             self.connect_button.setEnabled(False)
 
+        except ConnectionError as ce:
+            print(ce)
+            print(type(ce))
+            _make_error_window(ConnectionError("Could not connect to Relay Card. Is the card powered?"), kill_process=False, headline="Error", popup_title="Connection Error")
+            self.relay_card.shutdown()
+        
         except Exception as e:
             print(e)
+            print(type(e))
+            _make_error_window(e, kill_process=False, headline="Error", popup_title="Connection Error")
+            self.relay_card.shutdown()
 
-
-    
 
 
     def setup_relay_layout(self, config):
@@ -353,12 +337,7 @@ class RelayWindow(QWidget):
         self.connect_button.clicked.connect(self._connect_relay_card)
         layout_com_selection.addWidget(self.combobox_ports)
         layout_com_selection.addWidget(self.connect_button)
-
         vbox_layout.addWidget(widget_com_selection)
-
-
-        
-
         
         # meta buttons area
         widget_meta_actions = QWidget(self)
@@ -367,41 +346,7 @@ class RelayWindow(QWidget):
         widget_meta_actions.setLayout(layout_meta_actions)
 
         self._factorize_special_buttons(config=config, parent_widget=layout_meta_actions, logical_container=self.meta_buttons)
-
-        """
-        # button all on
-        button_all_on = QPushButton("All On")
-        button_all_on.clicked.connect(self.action_enable_all)
-        layout_meta_actions.addWidget(button_all_on)
-        self.meta_buttons.append(button_all_on)
         
-        # button all off
-        button_all_off = QPushButton("All Off")
-        button_all_off.clicked.connect(self.action_disable_all)
-        layout_meta_actions.addWidget(button_all_off)
-        self.meta_buttons.append(button_all_off)
-
-        # button 1-5 on
-        button_five_on = QPushButton("1-5 On")
-        button_five_on.clicked.connect(self.action_activate_first_five)
-        layout_meta_actions.addWidget(button_five_on)
-        self.meta_buttons.append(button_five_on)
-
-        # button check
-        """
-        """
-        button_check = QPushButton("Check")
-        button_check.clicked.connect(self.action_check)
-        layout_meta_actions.addWidget(button_check)
-        self.meta_buttons.append(button_check)
-        """
-        """
-        # button pulse 6-8
-        button_pulse = QPushButton("Pulse 6,7,8")
-        button_pulse.clicked.connect(self.action_pulse)
-        layout_meta_actions.addWidget(button_pulse)
-        self.meta_buttons.append(button_pulse)
-        """
         vbox_layout.addWidget(widget_meta_actions)
 
         # relay buttons
@@ -432,7 +377,6 @@ class RelayWindow(QWidget):
 
         vbox_layout.addWidget(widget_relay_buttons)
         self._disable_relay_buttons()
-        self.setWindowTitle("Relay Card Control")
         self.setGeometry(100, 100, 280, 80)
         vbox_layout.setSizeConstraint(QLayout.SetFixedSize)
         
@@ -443,12 +387,13 @@ class RelayMainWindow(QMainWindow):
         self.form_widget = RelayWindow() 
         self.setCentralWidget(self.form_widget)
 
-def _make_error_window(e, kill_process=False):
+def _make_error_window(e, kill_process=False, headline="Error", popup_title="Error"):
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Critical)
-    msg.setText(f"Error while parsing Relay Config:\n{type(e).__name__}")
+    #msg.setText(f"{headline}:\n{type(e).__name__}")
+    msg.setText(f"{type(e).__name__}")
     msg.setInformativeText(str(e))
-    msg.setWindowTitle("Config Parsing Error")
+    msg.setWindowTitle(popup_title)
     msg.exec_()
 
     if kill_process:
@@ -457,11 +402,16 @@ def _make_error_window(e, kill_process=False):
 
 
 def main():
-    app = QApplication([])
-    main_window = RelayMainWindow()
-    main_window.setWindowTitle(__title__)
-    main_window.show()
-    main_window.setFixedSize(main_window.width(), main_window.height())
-    app.exec()
+    try:
+        app = QApplication([])
+        main_window = RelayMainWindow()
+        main_window.setWindowTitle(__title__)
+        main_window.show()
+        main_window.setFixedSize(main_window.width(), main_window.height())
+        app.exec()
+    
+    except Exception as e:
+        log.error(e)
+        _make_error_window(e, kill_process=True, headline="Critical Application Error", popup_title="Critical Error")
 
 main()
