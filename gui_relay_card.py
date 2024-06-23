@@ -1,12 +1,12 @@
 from queue import Queue, Empty
 import serial
 import serial.tools.list_ports
-from PyQt5.QtWidgets import QMessageBox, QErrorMessage, QApplication, QLayout, QComboBox, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget,QMainWindow, QPushButton
-from PyQt5.QtCore import Qt, QSize, QObject, pyqtSignal, QThread, QTimer
-from PyQt5 import QtGui
+from PyQt5.QtWidgets import QMessageBox, QApplication, QLayout, QComboBox, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget,QMainWindow, QPushButton
+from PyQt5.QtCore import QObject, pyqtSignal, QThread, QTimer
 from relay_config import load_config
 from protocol_conrad import ConradRelayCard
 import logging
+import math
 
 log = logging.getLogger("GUI Relay Card")
 logging.basicConfig(level=logging.DEBUG)
@@ -73,7 +73,7 @@ class RelaySwitcherWorker(QObject):
                 log.debug("RelaySwitcherWorker: No updates")
 
             except Exception as e:
-                log.error(e)
+                log.error(str(e))
 
         self.finished.emit()
 
@@ -129,9 +129,6 @@ class RelayWindow(QWidget):
 
         x = 0
         y = 0
-        import math
-
-
         for b in config_buttons:
             log.debug(str(b))
             button_temp = QPushButton(b.get("label")[:__max_label_length__])
@@ -149,12 +146,6 @@ class RelayWindow(QWidget):
     def special_action(self):
         event_cause = self.sender() # event cause
         custom_action = event_cause.custom_action
-
-        print("#####")
-        print(event_cause.text())
-        print(event_cause.custom_action)
-        print(event_cause.custom_targets)
-        print(event_cause.custom_duration)
 
         if custom_action == "activate":
             self.action_activate_selective(event_cause.custom_targets)
@@ -271,11 +262,11 @@ class RelayWindow(QWidget):
                      'hwid': hwid,
                      'desc': desc 
                      })
-                print("{}: {} [{}]".format(port, desc, hwid))
-                print("port:", port)
-                print("desc:", desc)
-                print("hwid:", hwid)
-                print("-" * 64)
+                log.info("{}: {} [{}]".format(port, desc, hwid))
+                log.debug(f"port: {port}", )
+                log.debug(f"desc: {desc}", )
+                log.debug(f"hwid: {hwid}")
+                log.debug("-" * 64)
 
         return port_names
 
@@ -300,7 +291,6 @@ class RelayWindow(QWidget):
             pass
 
         try:
-            print("self.selected_com_port)", self.selected_com_port)
             self.relay_card.connect(self.selected_com_port)
             pre_state = self.relay_card.check_relay_state()
             self.queue_update_gui.put(pre_state)
@@ -313,14 +303,12 @@ class RelayWindow(QWidget):
             self.connect_button.setEnabled(False)
 
         except ConnectionError as ce:
-            print(ce)
-            print(type(ce))
+            log.error(str(ce))
             _make_error_window(ConnectionError("Could not connect to Relay Card. Is the card powered?"), kill_process=False, headline="Error", popup_title="Connection Error")
             self.relay_card.shutdown()
         
         except Exception as e:
-            print(e)
-            print(type(e))
+            log.error(str(e))
             _make_error_window(e, kill_process=False, headline="Error", popup_title="Connection Error")
             self.relay_card.shutdown()
 
@@ -421,7 +409,7 @@ def main():
         app.exec()
     
     except Exception as e:
-        log.error(e)
+        log.error(str(e))
         _make_error_window(e, kill_process=True, headline="Critical Application Error", popup_title="Critical Error")
 
 main()

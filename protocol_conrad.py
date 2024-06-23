@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 import serial # pip install pyserial
 import time
+import logging
 __author__="Robert Detlof"
+
+log = logging.getLogger("Protocol Conrad")
 
 class CommandCodes:
     NOOP = 0
@@ -143,7 +146,7 @@ class ConradRelayCard:
         self.connection.reset_input_buffer()
         self.connection.reset_output_buffer()
 
-        print("[REQUEST]", str(request_frame))
+        log.info(f"[REQUEST] {str(request_frame)}")
 
         self.connection.write(request_frame.get_bytes())
 
@@ -151,10 +154,10 @@ class ConradRelayCard:
         last_read = bytearray(self.connection.read(size=4))
 
         while len(last_read) > 0 and last_read[0] < 0xf0:
-            print("discarding:", last_read)
+            log.debug(f"discarding: {last_read}")
             last_read = bytearray(self.connection.read(size=4))
 
-        print("last_read", last_read)
+        log.debug(f"last_read: {last_read}")
 
         response_frame_raw = bytearray(last_read)
 
@@ -163,7 +166,7 @@ class ConradRelayCard:
         
         response_frame = ConradSerialFrame(response_frame_raw[0], response_frame_raw[1], response_frame_raw[2])
         
-        print("[RESPONSE]", response_frame)
+        log.info(f"[RESPONSE] {response_frame}")
 
         time.sleep(.1)
 
@@ -233,7 +236,7 @@ class ConradRelayCard:
             )
         
         
-        print("self.connection.is_open", self.connection.is_open)
+        log.debug(f"self.connection.is_open: {self.connection.is_open}")
 
         if self.connection == None or not self.connection.is_open:
             raise ConnectionError("Could not open serial connection")
